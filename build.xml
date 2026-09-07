@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="FillEnclosedArea" default="dist" basedir=".">
+
+    <!-- ============================================================
+         Machine-specific overrides go in build.properties (create it
+         next to this file; it's read here if present, and NOT
+         required to exist - sensible defaults are set below).
+         ============================================================ -->
+    <property file="build.properties"/>
+
+    <!-- Path to your local JOSM jar - the jar of the JOSM install you
+         want to develop/test against, e.g. josm-tested.jar or
+         josm-latest.jar. Override in build.properties. -->
+    <property name="josm.jar" value="lib/josm-tested.jar"/>
+
+    <!-- Path to the JTS core jar this plugin depends on for the
+         planar-face (Polygonizer) computation. Download it manually
+         (see lib/README.txt) and place it here, or override in
+         build.properties. -->
+    <property name="jts.jar" value="lib/jts-core-1.19.0.jar"/>
+
+    <!-- Plugin metadata - edit to taste, or override in
+         build.properties. -->
+    <property name="plugin.name" value="FillEnclosedArea"/>
+    <property name="plugin.class" value="org.openstreetmap.josm.plugins.fillenclosedarea.FillEnclosedAreaPlugin"/>
+    <property name="plugin.version" value="1.0"/>
+    <property name="plugin.mainversion" value="18646"/>
+    <property name="plugin.description" value="Fills a region with a new closed way, but only when it is fully enclosed by existing, genuinely connected way/node geometry. No gap bridging, no snapping, no freehand guessing - existing nodes are reused as-is."/>
+    <property name="plugin.author" value="stephan <stephan@contagt.com"/>
+
+    <!-- Java source/target level. Match this to whatever your target
+         JOSM version requires (recent JOSM needs 17; older JOSM
+         releases were fine with 11 or 8). Override in
+         build.properties if needed. -->
+    <property name="java.source" value="17"/>
+    <property name="java.target" value="17"/>
+
+    <property name="src.dir" value="src/main/java"/>
+    <property name="build.dir" value="build"/>
+    <property name="classes.dir" value="${build.dir}/classes"/>
+    <property name="merge.dir" value="${build.dir}/merge"/>
+    <property name="dist.dir" value="dist"/>
+
+    <path id="compile.classpath">
+        <pathelement location="${josm.jar}"/>
+        <pathelement location="${jts.jar}"/>
+    </path>
+
+    <target name="clean" description="Remove all build output">
+        <delete dir="${build.dir}"/>
+        <delete dir="${dist.dir}"/>
+    </target>
+
+    <target name="check-deps" description="Verify required jars are present before compiling">
+        <available file="${josm.jar}" property="josm.jar.present"/>
+        <fail unless="josm.jar.present">
+Cannot find ${josm.jar}
+Set josm.jar in build.properties to point at your JOSM installation's jar
+(e.g. the josm-tested.jar / josm-latest.jar you already run JOSM from).
+        </fail>
+
+        <available file="${jts.jar}" property="jts.jar.present"/>
+        <fail unless="jts.jar.present">
+Cannot find ${jts.jar}
+Download jts-core-1.19.0.jar (see lib/README.txt for where to get it)
+and place it at that path, or point jts.jar in build.properties at it.
+        </fail>
+    </target>
+
+    <target name="compile" depends="check-deps" description="Compile the plugin sources">
+        <mkdir dir="${classes.dir}"/>
+        <javac srcdir="${src.dir}"
+               destdir="${classes.dir}"
+               includeantruntime="false"
+               source="${java.source}"
+               target="${java.target}"
+               encoding="UTF-8"
+               debug="true">
+            <classpath refid="compile.classpath"/>
+        </javac>
+    </target>
+
+    <!-- JOSM plugin jars must be self-contained - JOSM does not resolve
+         an external classpath for a plugin's own dependencies at
+         runtime. So we merge our compiled classes with JTS's classes
+         into one directory before jarring, effectively producing a
+         "fat jar". (No relocation/shading is done here - if you ever
+         run into a class-version clash with another plugin also
+         bundling JTS, that's the trade-off; ant's "jarjar" task can
+         add relocation later if it becomes necessary.) -->
+    <target name="merge" depends="compile" description="Merge compiled classes with the JTS dependency">
+        <mkdir dir="${merge.dir}"/>
+        <copy todir="${merge.dir}">
+            <fileset dir="${classes.dir}"/>
+        </copy>
+        <unzip src="${jts.jar}" dest="${merge.dir}">
+            <patternset>
+                <exclude name="META-INF/**"/>
+            </patternset>
+        </unzip>
+    </target>
+
+    <target name="dist" depends="merge" description="Build the final plugin jar">
+        <mkdir dir="${dist.dir}"/>
+        <jar destfile="${dist.dir}/${plugin.name}.jar" basedir="${merge.dir}">
+            <manifest>
+                <attribute name="Plugin-Class" value="${plugin.class}"/>
+                <attribute name="Plugin-Version" value="${plugin.version}"/>
+                <attribute name="Plugin-Mainversion" value="${plugin.mainversion}"/>
+                <attribute name="Plugin-Description" value="${plugin.description}"/>
+                <attribute name="Author" value="${plugin.author}"/>
+                <attribute name="Plugin-Canloadatruntime" value="true"/>
+            </manifest>
+        </jar>
+        <echo message="Built ${dist.dir}/${plugin.name}.jar"/>
+    </target>
+
+    <!-- Optional convenience target: builds and copies straight into
+         your local JOSM plugins folder. Override josm.plugins.dir in
+         build.properties if yours isn't the Linux default below. -->
+    <target name="install" depends="dist" description="Build and install into your local JOSM plugins folder">
+        <property name="josm.plugins.dir" value="${user.home}/.local/share/JOSM/plugins"/>
+        <mkdir dir="${josm.plugins.dir}"/>
+        <copy file="${dist.dir}/${plugin.name}.jar" todir="${josm.plugins.dir}"/>
+        <echo message="Installed to ${josm.plugins.dir}/${plugin.name}.jar - restart JOSM to load it."/>
+    </target>
+
+</project>
